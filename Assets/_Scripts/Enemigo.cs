@@ -2,17 +2,20 @@ using UnityEngine;
 
 public class Enemigo : MonoBehaviour
 {
-    public int damage = 20;
+    // Ya no necesitamos la variable 'damage' aquí, la controla el GameManager
 
     void OnTriggerEnter2D(Collider2D other)
     {
-        // Esta línea imprimirá TODO lo que toque el pez en la consola
-        Debug.Log("El enemigo chocó con: " + other.gameObject.name);
-
         if (other.CompareTag("Player"))
         {
-            Debug.Log("¡ATAQUE AL JUGADOR CONFIRMADO!");
-            GameManager.instance.TakeDamage(damage);
+            if (GameManager.instance != null)
+            {
+                // LEER EL DAÑO GLOBAL DESDE EL GAMEMANAGER
+                int danoActual = GameManager.instance.collisionDamage;
+
+                GameManager.instance.TakeDamage(danoActual);
+            }
+
             Destroy(gameObject);
         }
     }

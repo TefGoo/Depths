@@ -2,17 +2,18 @@ using UnityEngine;
 
 public class Recolectable : MonoBehaviour
 {
-    public int valor = 1; // Cuánto dinero da
+    public int valor = 1;
 
     void OnTriggerEnter2D(Collider2D other)
     {
-        // Si choca con el Jugador...
         if (other.CompareTag("Player"))
         {
-            // 1. Dar dinero (Crearemos esta función en un segundo)
-            GameManager.instance.AddMoney(valor);
+            // Ahora llama a AddMoney (que suma a la bolsa temporal)
+            if (GameManager.instance != null)
+            {
+                GameManager.instance.AddMoney(valor);
+            }
 
-            // 2. Desaparecer
             Destroy(gameObject);
         }
     }

@@ -2,31 +2,32 @@ using UnityEngine;
 
 public class MoverArriba : MonoBehaviour
 {
-    [Header("Velocidad Variada")]
     public float velocidadMin = 1f;
     public float velocidadMax = 4f;
+    public float alturaParaDestruir = 7f;
 
-    [Header("Limpieza")]
-    public float alturaParaDestruir = 6f; // Justo por encima de donde ve la cámara
-
-    private float velocidadReal;
+    private float velocidadBase;
 
     void Start()
     {
-        // Al nacer, este objeto elige su propia personalidad (velocidad)
-        velocidadReal = Random.Range(velocidadMin, velocidadMax);
+        velocidadBase = Random.Range(velocidadMin, velocidadMax);
     }
 
     void Update()
     {
-        // Leemos la velocidad de la "antena" (GameManager.instance.velocidadMundo)
-        float velocidadTotal = velocidadReal * GameManager.instance.velocidadMundo;
+        // Leemos la velocidad turbo del GameManager
+        float multiplicadorTurbo = 1f;
 
-        // Movemos
-        transform.Translate(Vector2.up * velocidadTotal * Time.deltaTime);
+        if (GameManager.instance != null)
+        {
+            multiplicadorTurbo = GameManager.instance.velocidadMundo;
+        }
 
-        // ... (El resto de tu código de limpieza sigue igual) ...
-        if (transform.position.y > 6f || transform.position.y < -8f)
+        // Movimiento
+        transform.Translate(Vector2.up * velocidadBase * multiplicadorTurbo * Time.deltaTime);
+
+        // Limpieza (Arriba y Abajo)
+        if (transform.position.y > 8f || transform.position.y < -8f)
         {
             Destroy(gameObject);
         }

@@ -1,76 +1,147 @@
 using UnityEngine;
 using TMPro;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 public class GameManager : MonoBehaviour
 {
-    // --- SINGLETON (La Antena) ---
+    // --- SINGLETON ---
     public static GameManager instance;
 
-    [Header("Configuración General")]
-    public float velocidadMundo = 1f; // 1 = Normal, 10 = Turbo
+    [Header("Configuración Global")]
+    public float velocidadMundo = 1f;
+    public float gravedadVisual = 5f;
+    public float velocidadAscenso = 100f;
+    public float profundidadMeta = 10000f;
 
-    [Header("Estadísticas de Juego")]
+    [Header("Estados del Juego")]
+    public bool isReturning = false;
     public float currentDepth = 0f;
-    public int totalMoney = 0;
 
-    [Header("Salud / Casco")]
+    [Header("Supervivencia")]
+    public float maxOxygen = 30f;
+    public float currentOxygen;
     public int maxHealth = 100;
     private int currentHealth;
+    public int collisionDamage = 25;
 
-    [Header("Tienda / Mejoras")]
+    [Header("Economía")]
+    public int totalMoney = 0;
+
+    [Header("Costos de Tienda")]
     public int cableCost = 10;
-    public float cablePower = 10f; // Cuánto bajas por click
+    public int repairCost = 15;
+    public int oxygenCost = 20;
+    public int armorCost = 25;
 
-    [Header("Condición de Victoria")]
-    public float targetDepth = 10000f; // La meta
-    public GameObject winPanel; // Arrastra tu panel aquí
-    private bool gameEnded = false;
+    [Header("Estadísticas (Mejoras)")]
+    public float cablePower = 10f;
 
-    [Header("Referencias UI (Arrastra los textos aquí)")]
+    [Header("Referencias UI")]
     public TextMeshProUGUI depthText;
     public TextMeshProUGUI moneyText;
     public TextMeshProUGUI healthText;
-    public TextMeshProUGUI upgradeText;
+
+    [Header("UI Oxígeno (1-BIT)")]
+    public Slider oxygenBar; // Solo necesitamos esto, haremos parpadear todo el objeto
+    // (Borré la variable oxygenFillImage porque ya no la usamos)
+
+    [Header("Panel Victoria")]
+    public GameObject winPanel;
+
+    [Header("Referencias UI (Botones Tienda)")]
+    public TextMeshProUGUI btnCableText;
+    public TextMeshProUGUI btnRepairText;
+    public TextMeshProUGUI btnOxygenText;
+    public TextMeshProUGUI btnArmorText;
 
     void Awake()
     {
-        // El Singleton se inicializa siempre en Awake
-        if (instance == null)
-        {
-            instance = this;
-        }
-        else
-        {
-            Destroy(gameObject); // Evita duplicados si recargas escena
-        }
+        if (instance == null) instance = this;
+        else Destroy(gameObject);
     }
 
     void Start()
     {
-        // 1. Inicializar Salud
         currentHealth = maxHealth;
-        UpdateHealthUI();
+        currentOxygen = maxOxygen;
 
-        // 2. Inicializar Textos Base
-        if (depthText != null) depthText.text = "0 m";
-        if (moneyText != null) moneyText.text = totalMoney + " DATOS";
+        UpdateUI();
 
-        // 3. Inicializar Texto Tienda
-        if (upgradeText != null)
-            upgradeText.text = "MEJORAR CABLE\n($" + cableCost + ")";
+        if (winPanel != null) winPanel.SetActive(false);
     }
 
     void Update()
     {
-        // Lógica de frenado del Turbo (Vuelve a 1 poco a poco)
-        if (velocidadMundo > 1f)
+        // 1. GESTIÓN DE OXÍGENO
+        if (currentDepth > 0 && !isReturning)
         {
-            velocidadMundo -= Time.deltaTime * 5f;
+            currentOxygen -= Time.deltaTime;
+            if (currentOxygen <= 0) Die("¡ASFIXIA!");
+        }
+
+        // Parpadeo de TODO el slider
+        HandleOxygenVisuals();
+
+        // 2. GESTIÓN DE MOVIMIENTO Y RETORNO
+        if (isReturning)
+        {
+            currentDepth -= velocidadAscenso * Time.deltaTime;
+            velocidadMundo = -20f;
+
+            if (currentDepth <= 0)
+            {
+                currentDepth = 0;
+                LlegadaSuperficie();
+            }
+            UpdateUI();
         }
         else
         {
-            velocidadMundo = 1f;
+            if (velocidadMundo > 1f)
+                velocidadMundo -= Time.deltaTime * gravedadVisual;
+            else if (velocidadMundo < 1f)
+                velocidadMundo = 1f;
+        }
+    }
+
+    // --- LÓGICA VISUAL DEL OXÍGENO (TODO PARPADEA) ---
+    void HandleOxygenVisuals()
+    {
+        if (oxygenBar == null) return;
+
+        // Actualizar valor
+        float porcentaje = currentOxygen / maxOxygen;
+        oxygenBar.value = porcentaje;
+
+        // Lógica de Parpadeo GLOBAL
+        if (porcentaje > 0.5f)
+        {
+            // Seguro: Siempre visible
+            if (!oxygenBar.gameObject.activeSelf)
+                oxygenBar.gameObject.SetActive(true);
+        }
+        else
+        {
+            // Peligro: Parpadeo
+            float blinkSpeed = 5f; // Velocidad media
+
+            if (porcentaje <= 0.25f)
+            {
+                blinkSpeed = 15f; // Velocidad ALTA (Pánico)
+            }
+
+            // Onda Senoidal (-1 a 1)
+            float onda = Mathf.Sin(Time.time * blinkSpeed);
+
+            // Si la onda es positiva prendemos, si es negativa apagamos
+            bool debeVerse = (onda > 0);
+
+            // Solo hacemos el cambio si es diferente al estado actual (optimización)
+            if (oxygenBar.gameObject.activeSelf != debeVerse)
+            {
+                oxygenBar.gameObject.SetActive(debeVerse);
+            }
         }
     }
 
@@ -78,89 +149,165 @@ public class GameManager : MonoBehaviour
 
     public void Descend()
     {
-        if (gameEnded) return; // Si ya ganó o perdió, el botón no hace nada
+        if (isReturning) return;
 
-        // Bajar
         currentDepth += cablePower;
-
-        // Actualizar Texto
-        if (depthText != null)
-            depthText.text = currentDepth.ToString("F0") + " m";
-
-        // Checar Victoria
-        if (currentDepth >= targetDepth)
-        {
-            WinGame();
-        }
-
-        // Efecto turbo
         velocidadMundo = 10f;
+
+        if (currentDepth >= profundidadMeta) WinGame();
+
+        UpdateUI();
     }
+
+    public void ActivatePanic()
+    {
+        if (currentDepth > 0)
+        {
+            isReturning = true;
+            Debug.Log("¡EMERGENCIA! INICIANDO ASCENSO...");
+        }
+    }
+
+    // --- LÓGICA INTERNA ---
+
+    void LlegadaSuperficie()
+    {
+        isReturning = false;
+        velocidadMundo = 1f;
+        currentOxygen = maxOxygen;
+
+        // IMPORTANTE: Asegurar que el slider esté visible al llegar
+        if (oxygenBar != null) oxygenBar.gameObject.SetActive(true);
+
+        UpdateUI();
+
+        MoverArriba[] basuraFlotante = FindObjectsOfType<MoverArriba>();
+        foreach (MoverArriba objeto in basuraFlotante)
+        {
+            Destroy(objeto.gameObject);
+        }
+    }
+
+    // --- TIENDA ---
 
     public void BuyCableUpgrade()
     {
         if (totalMoney >= cableCost)
         {
-            // Cobrar y Mejorar
             totalMoney -= cableCost;
-            cablePower += 5f;      // Ahora bajas más rápido
-            cableCost *= 2;        // Inflación de precio
-
-            // Actualizar UI
-            if (moneyText != null) moneyText.text = totalMoney + " DATOS";
-            if (upgradeText != null) upgradeText.text = "MEJORAR CABLE\n($" + cableCost + ")";
-        }
-        else
-        {
-            Debug.Log("¡No tienes suficientes Datos!");
+            cablePower += 5f;
+            cableCost *= 2;
+            UpdateUI();
         }
     }
 
-    // --- SISTEMA DE EVENTOS (Daño y Dinero) ---
-
-    public void AddMoney(int cantidad)
+    public void BuyRepairHull()
     {
-        totalMoney += cantidad;
-        if (moneyText != null) moneyText.text = totalMoney + " DATOS";
+        if (totalMoney >= repairCost && currentHealth < maxHealth)
+        {
+            totalMoney -= repairCost;
+            currentHealth += 30;
+            if (currentHealth > maxHealth) currentHealth = maxHealth;
+            UpdateUI();
+        }
+    }
+
+    public void BuyOxygenUpgrade()
+    {
+        if (totalMoney >= oxygenCost)
+        {
+            totalMoney -= oxygenCost;
+            maxOxygen += 10f;
+            currentOxygen += (maxOxygen * 0.20f);
+            if (currentOxygen > maxOxygen) currentOxygen = maxOxygen;
+            oxygenCost += 10;
+            UpdateUI();
+        }
+    }
+
+    public void BuyArmorUpgrade()
+    {
+        if (totalMoney >= armorCost && collisionDamage > 5)
+        {
+            totalMoney -= armorCost;
+            collisionDamage -= 5;
+            armorCost += 20;
+            UpdateUI();
+        }
+    }
+
+    // --- EVENTOS ---
+
+    public void AddMoney(int amount)
+    {
+        totalMoney += amount;
+        UpdateUI();
     }
 
     public void TakeDamage(int damage)
     {
-        currentHealth -= damage;
-        Debug.Log("¡Golpe! Salud restante: " + currentHealth);
+        if (isReturning) return;
 
-        if (currentHealth <= 0)
+        currentHealth -= damage;
+        UpdateUI();
+
+        if (CameraShake.instance != null) CameraShake.instance.Shake(0.2f, 0.3f);
+
+        if (currentHealth <= 0) Die("¡CASCO ROTO!");
+    }
+
+    // --- UI ---
+
+    void UpdateUI()
+    {
+        // --- HUD PRINCIPAL (MAIN HUD) ---
+        if (depthText != null) depthText.text = currentDepth.ToString("F0") + " m";
+        if (moneyText != null) moneyText.text = totalMoney + " DATA"; // Antes DATOS
+        if (healthText != null) healthText.text = "HEALTH: " + currentHealth + "%"; // Antes CASCO
+
+        // --- TIENDA (STORE BUTTONS) ---
+
+        // 1. CABLE (Pwr = Power)
+        if (btnCableText != null)
+            btnCableText.text = "CABLE\n(Pwr: " + cablePower.ToString("F0") + "m)\n$" + cableCost;
+
+        // 2. REPARAR (REPAIR)
+        if (btnRepairText != null)
         {
-            currentHealth = 0;
-            GameOver();
+            if (currentHealth >= maxHealth)
+                btnRepairText.text = "REPAIR\n(Full)\n--";
+            else
+                btnRepairText.text = "REPAIR\n(HP: " + currentHealth + "%)\n$" + repairCost;
         }
 
-        UpdateHealthUI();
+        // 3. OXÍGENO (OXYGEN)
+        if (btnOxygenText != null)
+            btnOxygenText.text = "OXYGEN\n(" + maxOxygen.ToString("F0") + "s Max)\n$" + oxygenCost;
+
+        // 4. BLINDAJE (ARMOR)
+        if (btnArmorText != null)
+        {
+            if (collisionDamage > 5)
+            {
+                int currentLevel = (30 - collisionDamage) / 5;
+                btnArmorText.text = "ARMOR\n(Lvl " + currentLevel + "/5)\n$" + armorCost;
+            }
+            else
+            {
+                btnArmorText.text = "ARMOR\n(MAX)\n--";
+            }
+        }
     }
 
-    // --- FUNCIONES INTERNAS ---
-
-    void UpdateHealthUI()
+    void Die(string reason)
     {
-        if (healthText != null)
-            healthText.text = "CASCO: " + currentHealth + "%";
-    }
-
-    public void GameOver()
-    {
-        // Reinicia la escena actual
+        Debug.Log("GAME OVER: " + reason);
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
     void WinGame()
     {
-        gameEnded = true;
-        Debug.Log("¡HAS LLEGADO AL FONDO!");
-
-        // Mostrar el panel
-        if (winPanel != null) winPanel.SetActive(true);
-
-        // Detener el caos (Opcional: poner velocidad a 0)
         velocidadMundo = 0f;
+        if (winPanel != null) winPanel.SetActive(true);
     }
 }
